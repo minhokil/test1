@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>현장실습 관리 시스템 - 파일 업로드</title>
+    <style>
+        body { font-family: sans-serif; margin: 2em; }
+        h1, h2 { color: #333; }
+        form { border: 1px solid #ccc; padding: 1em; border-radius: 5px; }
+        label { display: block; margin-bottom: 0.5em; }
+        input[type="file"], input[type="number"] { margin-bottom: 1em; }
+        button { padding: 0.5em 1em; background-color: #007bff; color: white; border: none; border-radius: 3px; cursor: pointer; }
+        button:hover { background-color: #0056b3; }
+    </style>
+</head>
+<body>
+    <h1>현장실습 관리 시스템</h1>
+    <h2>엑셀 파일 업로드</h2>
+    <p>데이터베이스로 변환할 학년도별 엑셀 파일을 업로드해주세요.</p>
+    <form action="/upload" method="post" enctype="multipart/form-data">
+        <p>
+            <label for="year">학년도 (2012-2026):</label>
+            <input type="number" name="year" id="year" min="2012" max="2026" required>
+        </p>
+        <p>
+            <label for="file">엑셀 파일:</label>
+            <input type="file" name="file" id="file" accept=".xls,.xlsx" required>
+        </p>
+        <button type="submit">업로드</button>
+    </form>
+</body>
+</html>

@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>스키마 확인 및 수정</title>
+    <style>
+        body { font-family: sans-serif; margin: 2em; line-height: 1.6; }
+        h1, h2 { color: #333; }
+        table { border-collapse: collapse; width: 100%; margin-bottom: 1.5em; box-shadow: 0 2px 3px rgba(0,0,0,0.1); }
+        th, td { border: 1px solid #ddd; padding: 0.8em; text-align: left; }
+        th { background-color: #f7f7f7; }
+        .schema-table input[type="text"], .schema-table select { width: 95%; padding: 0.5em; border: 1px solid #ccc; border-radius: 3px; }
+        button { padding: 0.7em 1.5em; font-size: 1em; background-color: #28a745; color: white; border: none; border-radius: 5px; cursor: pointer; }
+        button:hover { background-color: #218838; }
+        p { color: #555; }
+    </style>
+</head>
+<body>
+    <h1>스키마 확인 및 수정</h1>
+    <p><strong>학년도:</strong> {{ year }}</p>
+    <p><strong>파일명:</strong> {{ filepath.split('/')[-1] if filepath else 'N/A' }}</p>
+
+    <h2>데이터 미리보기 (상위 5개 행)</h2>
+    <table>
+        <thead>
+            <tr>
+                {% for col in schema %}
+                    <th>{{ col.original }}</th>
+                {% endfor %}
+            </tr>
+        </thead>
+        <tbody>
+            {% for row in sample_data %}
+            <tr>
+                {% for cell in row %}
+                <td>{{ cell }}</td>
+                {% endfor %}
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+
+    <h2>스키마 수정</h2>
+    <p>데이터베이스에 생성될 테이블의 필드명과 데이터 타입을 확인하고 필요시 수정해주세요.</p>
+    <form action="/create_db" method="post">
+        <input type="hidden" name="filepath" value="{{ filepath }}">
+        <input type="hidden" name="year" value="{{ year }}">
+        <table class="schema-table">
+            <thead>
+                <tr>
+                    <th>원본 필드명</th>
+                    <th>DB 필드명 (수정 가능)</th>
+                    <th>데이터 타입 (수정 가능)</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for col in schema %}
+                <tr>
+                    <td>{{ col.original }}</td>
+                    <td><input type="text" name="column_name_{{ loop.index0 }}" value="{{ col.cleaned }}" required></td>
+                    <td>
+                        <select name="column_type_{{ loop.index0 }}">
+                            <option value="TEXT" {% if col.type == 'TEXT' %}selected{% endif %}>TEXT</option>
+                            <option value="INTEGER" {% if col.type == 'INTEGER' %}selected{% endif %}>INTEGER</option>
+                            <option value="REAL" {% if col.type == 'REAL' %}selected{% endif %}>REAL</option>
+                        </select>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        <button type="submit">데이터베이스 생성</button>
+    </form>
+</body>
+</html>
