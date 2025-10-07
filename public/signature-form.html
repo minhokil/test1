@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>전자 계약 시스템 - 최종 서명</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.10.377/pdf.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/signature_pad@4.0.0/dist/signature_pad.umd.min.js"></script>
+    <style>
+        body { font-family: sans-serif; margin: 0; padding: 1em; display: flex; flex-direction: column; align-items: center; }
+        .container { width: 80%; max-width: 900px; }
+        #pdf-container { position: relative; border: 2px solid #333; margin-top: 1em; }
+        #pdf-canvas { display: block; width: 100%; height: auto; }
+        .signature-area { margin-top: 1.5em; }
+        .signature-pad-container { border: 2px dashed #007bff; margin-top: 0.5em; }
+        button { margin-top: 1em; padding: 0.8em 1.2em; background-color: #28a745; color: white; border: none; border-radius: 5px; cursor: pointer; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>계약서 확인 및 최종 서명</h1>
+        <p>계약 내용을 최종 확인하신 후, 학생과 학부모님께서는 각각 서명해주세요.</p>
+
+        <div id="pdf-container">
+            <canvas id="pdf-canvas"></canvas>
+        </div>
+
+        <form id="signature-form">
+            <div class="signature-area">
+                <h2>학생 서명</h2>
+                <div class="signature-pad-container">
+                    <canvas id="student-signature-pad"></canvas>
+                </div>
+            </div>
+            <div class="signature-area">
+                <h2>학부모 동의 서명</h2>
+                <div class="signature-pad-container">
+                    <canvas id="parent-signature-pad"></canvas>
+                </div>
+            </div>
+            <button type="submit">최종 서명 제출</button>
+        </form>
+    </div>
+
+    <script>
+        pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.10.377/pdf.worker.min.js';
+
+        const urlParams = new URLSearchParams(window.location.search);
+        const contractId = urlParams.get('id');
+
+        const pdfCanvas = document.getElementById('pdf-canvas');
+        const studentPadCanvas = document.getElementById('student-signature-pad');
+        const parentPadCanvas = document.getElementById('parent-signature-pad');
+
+        // 서명 패드 초기화
+        const studentPad = new SignaturePad(studentPadCanvas);
+        const parentPad = new SignaturePad(parentPadCanvas);
+
+        // PDF 로드
+        fetch(`/api/contracts/${contractId}`)
+            .then(res => res.json())
+            .then(data => {
+                if (!data.success) throw new Error(data.message);
+                const pdfUrl = `/uploads/${data.contract.current_pdf_name}`;
+                return pdfjsLib.getDocument(pdfUrl).promise;
+            })
+            .then(pdf => pdf.getPage(1))
+            .then(page => {
+                const scale = pdfCanvas.clientWidth / page.getViewport({ scale: 1 }).width;
+                const viewport = page.getViewport({ scale });
+                pdfCanvas.height = viewport.height;
+                pdfCanvas.width = viewport.width;
+                studentPadCanvas.width = studentPadCanvas.offsetWidth;
+                parentPadCanvas.width = parentPadCanvas.offsetWidth;
+                page.render({ canvasContext: pdfCanvas.getContext('2d'), viewport });
+            })
+            .catch(err => alert('계약서 로드 실패: ' + err.message));
+
+        // 서명 제출
+        document.getElementById('signature-form').addEventListener('submit', e => {
+            e.preventDefault();
+            if (studentPad.isEmpty() || parentPad.isEmpty()) {
+                return alert('학생과 학부모 모두의 서명이 필요합니다.');
+            }
+
+            const studentSignature = studentPad.toDataURL('image/png');
+            const parentSignature = parentPad.toDataURL('image/png');
+
+            fetch('/api/signatures', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ contractId, studentSignature, parentSignature })
+            })
+            .then(res => res.json())
+            .then(data => {
+                if (data.success) {
+                    alert('모든 서명이 완료되었습니다. 학교 담당자의 최종 승인을 기다립니다.');
+                    window.location.href = '/admin.html';
+                } else {
+                    alert('제출 실패: ' + data.message);
+                }
+            });
+        });
+    </script>
+</body>
+</html>

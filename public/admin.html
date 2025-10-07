@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>전자 계약 시스템 - 관리자 대시보드</title>
+    <style>
+        body { font-family: sans-serif; margin: 2em; background-color: #f9f9f9; }
+        .container { max-width: 1000px; margin: auto; background: #fff; padding: 2em; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+        h1 { color: #333; }
+        table { width: 100%; border-collapse: collapse; margin-top: 1em; }
+        th, td { border: 1px solid #ccc; padding: 0.8em; text-align: left; }
+        th { background-color: #f4f4f4; }
+        .status { font-weight: bold; }
+        .status-pending_fields { color: #6c757d; } /* 회색 */
+        .status-pending_company_input { color: #ff9800; } /* 주황색 */
+        .status-pending_signatures { color: #2196f3; } /* 파란색 */
+        .status-completed { color: #f44336; } /* 빨간색 */
+        .status-approved { color: #4caf50; } /* 녹색 */
+        .status-rejected { color: #757575; } /* 어두운 회색 */
+        button { padding: 0.4em 0.8em; margin-right: 5px; cursor: pointer; border: 1px solid #ccc; border-radius: 4px; }
+        button:disabled { cursor: not-allowed; opacity: 0.5; }
+        .btn-approve { background-color: #28a745; color: white; border-color: #28a745;}
+        .btn-reject { background-color: #dc3545; color: white; border-color: #dc3545;}
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>계약 관리 대시보드</h1>
+        <p>모든 계약의 진행 상황을 확인하고, 완결된 계약을 최종 처리할 수 있습니다.</p>
+        <a href="/">새 계약서 업로드 페이지로 가기</a>
+        <table id="contracts-table">
+            <thead>
+                <tr>
+                    <th>계약 ID</th>
+                    <th>최신 PDF 파일</th>
+                    <th>상태</th>
+                    <th>처리</th>
+                </tr>
+            </thead>
+            <tbody>
+                <!-- 계약 목록이 여기에 동적으로 추가됩니다. -->
+            </tbody>
+        </table>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', fetchContracts);
+
+        function fetchContracts() {
+            fetch('/api/contracts')
+                .then(res => res.json())
+                .then(data => {
+                    if (data.success) {
+                        const tableBody = document.querySelector('#contracts-table tbody');
+                        tableBody.innerHTML = '';
+                        data.contracts.forEach(contract => {
+                            const row = document.createElement('tr');
+                            const statusText = getStatusText(contract.status);
+                            const canBeActioned = contract.status === 'completed';
+
+                            row.innerHTML = `
+                                <td>${contract.id}</td>
+                                <td><a href="/uploads/${contract.current_pdf_name}" target="_blank">${contract.current_pdf_name}</a></td>
+                                <td><span class="status status-${contract.status}">${statusText}</span></td>
+                                <td>
+                                    <button class="btn-approve" onclick="handleAction('${contract.id}', 'approve')" ${!canBeActioned ? 'disabled' : ''}>승인</button>
+                                    <button class="btn-reject" onclick="handleAction('${contract.id}', 'reject')" ${!canBeActioned ? 'disabled' : ''}>반려</button>
+                                </td>
+                            `;
+                            tableBody.appendChild(row);
+                        });
+                    }
+                });
+        }
+
+        function getStatusText(status) {
+            const statuses = {
+                'pending_fields': '필드 설정 대기중',
+                'pending_company_input': '기업 입력 대기중',
+                'pending_signatures': '학생/학부모 서명 대기중',
+                'completed': '완결 (최종 승인 대기중)',
+                'approved': '승인됨',
+                'rejected': '반려됨 (기업 재입력 필요)',
+            };
+            return statuses[status] || status;
+        }
+
+        function handleAction(contractId, action) {
+            if (!confirm(`정말로 이 계약을 '${action === 'approve' ? '승인' : '반려'}' 처리하시겠습니까?`)) {
+                return;
+            }
+
+            fetch(`/api/contracts/${contractId}/action`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ action })
+            })
+            .then(res => res.json())
+            .then(data => {
+                if (data.success) {
+                    alert(`계약이 성공적으로 처리되었습니다.`);
+                    fetchContracts(); // 목록 새로고침
+                } else {
+                    alert('처리 실패: ' + data.message);
+                }
+            });
+        }
+    </script>
+</body>
+</html>

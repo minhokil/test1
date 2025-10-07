@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>전자 계약 시스템 - 필드 설정</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.10.377/pdf.min.js"></script>
+    <style>
+        body { font-family: sans-serif; margin: 0; padding: 1em; display: flex; flex-direction: column; align-items: center; }
+        .controls { margin-bottom: 1em; padding: 1em; background: #f0f0f0; border-radius: 8px; }
+        #pdf-container { position: relative; border: 2px solid #333; }
+        #pdf-canvas { display: block; }
+        #drawing-canvas { position: absolute; top: 0; left: 0; cursor: crosshair; }
+        .field-box { position: absolute; border: 2px solid; box-sizing: border-box; }
+        .field-text { border-color: rgba(0, 123, 255, 0.8); background-color: rgba(0, 123, 255, 0.2); }
+        .field-seal { border-color: rgba(220, 53, 69, 0.8); background-color: rgba(220, 53, 69, 0.2); }
+        .field-student_sign { border-color: rgba(40, 167, 69, 0.8); background-color: rgba(40, 167, 69, 0.2); }
+        .field-parent_sign { border-color: rgba(255, 193, 7, 0.8); background-color: rgba(255, 193, 7, 0.2); }
+    </style>
+</head>
+<body>
+    <h1>계약서 필드 설정</h1>
+    <p>PDF 위에서 마우스를 드래그하여 영역을 지정하고, 해당 영역의 용도를 선택해주세요.</p>
+
+    <div class="controls">
+        <label for="fieldType">필드 유형:</label>
+        <select id="fieldType">
+            <option value="text" selected>텍스트 입력</option>
+            <option value="seal">기업 직인</option>
+            <option value="student_sign">학생 서명</option>
+            <option value="parent_sign">학부모 서명</option>
+        </select>
+        <button id="save-fields-btn">필드 저장 및 다음 단계로</button>
+    </div>
+
+    <div id="pdf-container">
+        <canvas id="pdf-canvas"></canvas>
+        <canvas id="drawing-canvas"></canvas>
+    </div>
+
+    <script>
+        pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.10.377/pdf.worker.min.js';
+
+        const urlParams = new URLSearchParams(window.location.search);
+        const contractId = urlParams.get('id');
+
+        const pdfCanvas = document.getElementById('pdf-canvas');
+        const drawingCanvas = document.getElementById('drawing-canvas');
+        const pdfCtx = pdfCanvas.getContext('2d');
+        const drawCtx = drawingCanvas.getContext('2d');
+        const fieldTypeSelect = document.getElementById('fieldType');
+
+        let fields = [];
+        let isDrawing = false;
+        let startX, startY, scale;
+
+        // 계약 정보 로드 및 PDF 렌더링
+        fetch(`/api/contracts/${contractId}`)
+            .then(res => res.json())
+            .then(data => {
+                if (!data.success) throw new Error(data.message);
+                const pdfUrl = `/uploads/${data.contract.original_pdf_name}`;
+                return pdfjsLib.getDocument(pdfUrl).promise;
+            })
+            .then(pdf => pdf.getPage(1))
+            .then(page => {
+                const viewport = page.getViewport({ scale: 1.5 });
+                scale = 1.5; // 스케일 저장
+                pdfCanvas.height = viewport.height;
+                pdfCanvas.width = viewport.width;
+                drawingCanvas.height = viewport.height;
+                drawingCanvas.width = viewport.width;
+                page.render({ canvasContext: pdfCtx, viewport });
+            })
+            .catch(err => alert('PDF 로드 실패: ' + err.message));
+
+        // 필드 그리기 이벤트
+        drawingCanvas.addEventListener('mousedown', e => {
+            isDrawing = true;
+            startX = e.offsetX;
+            startY = e.offsetY;
+        });
+
+        drawingCanvas.addEventListener('mousemove', e => {
+            if (!isDrawing) return;
+            const currentX = e.offsetX;
+            const currentY = e.offsetY;
+            drawCtx.clearRect(0, 0, drawingCanvas.width, drawingCanvas.height);
+            fields.forEach(drawPermanentRect); // 기존 사각형 다시 그리기
+            drawCtx.strokeRect(startX, startY, currentX - startX, currentY - startY);
+        });
+
+        drawingCanvas.addEventListener('mouseup', e => {
+            if (!isDrawing) return;
+            isDrawing = false;
+            const field = {
+                type: fieldTypeSelect.value,
+                x: Math.min(startX, e.offsetX),
+                y: Math.min(startY, e.offsetY),
+                width: Math.abs(e.offsetX - startX),
+                height: Math.abs(startY - startY)
+            };
+            fields.push(field);
+            drawPermanentRect(field);
+        });
+
+        function drawPermanentRect(rect) {
+            const classMap = { text: 'field-text', seal: 'field-seal', student_sign: 'field-student_sign', parent_sign: 'field-parent_sign' };
+            drawCtx.strokeStyle = window.getComputedStyle(document.querySelector(`.${classMap[rect.type]}`)).borderColor;
+            drawCtx.lineWidth = 2;
+            drawCtx.strokeRect(rect.x, rect.y, rect.width, rect.height);
+        }
+
+        // 필드 저장
+        document.getElementById('save-fields-btn').addEventListener('click', () => {
+            // PDF 렌더링 스케일을 고려하여 실제 좌표로 변환
+            const scaledFields = fields.map(f => ({
+                ...f,
+                x: f.x / scale,
+                y: f.y / scale,
+                width: f.width / scale,
+                height: f.height / scale,
+            }));
+
+            fetch(`/api/fields`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ contractId, fields: scaledFields })
+            })
+            .then(res => res.json())
+            .then(data => {
+                if (data.success) {
+                    alert('필드가 성공적으로 저장되었습니다. 기업 담당자에게 전달할 링크를 생성합니다.');
+                    const companyLink = `${window.location.origin}/company-form.html?id=${contractId}`;
+                    console.log(`[KAKAOTALK_SIMULATION] 기업 담당자에게 링크 전송: ${companyLink}`);
+                    alert(`기업 담당자용 링크 (콘솔 확인):\n${companyLink}`);
+                    window.location.href = '/admin.html';
+                } else {
+                    alert('필드 저장 실패: ' + data.message);
+                }
+            });
+        });
+    </script>
+</body>
+</html>
